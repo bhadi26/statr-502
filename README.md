@@ -1,1 +1,4 @@
-# statr-502
+# StatR 502 Course Materials 
+
+* Lecture Notes 
+* Homeworks
