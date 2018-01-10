@@ -150,7 +150,8 @@ $ log(earnings) $ = Sexpr(intercept) + .08 * $log(height)$
 sd_pop = .05*log(66)
 sd_pop
 
-r_squared = 1 - (sd_pop^2 / resid_sd^2)
+r_squared = 1 - (sd_pop^2 / resid_sd^2) 
+#from the text I believe the proportion should be inverted (i.e. resid_sd^2 / sp_pop^2, but the answer doesn't make sense mathematically)
 
 r_squared
 
@@ -196,18 +197,115 @@ table(z.scores >1.96)
 
 ## G&H 5
 
-The folder beauty contains data from Hamermesh and Parker (2005) on student evaluations of instructors’ beauty and teaching quality for several courses at the University of Texas. The teaching evaluations were conducted at the end of the semester, and the beauty judgments were made later, by six students who had not attended the classes and were not aware of the course evaluations.
-(a) Run a regression using beauty (the variable btystdave) to predict course evaluations (courseevaluation), controlling for various other inputs. Dis- play the fitted model graphically, and explaining the meaning of each of the coefficients, along with the residual standard deviation. Plot the residuals versus fitted values.
-(b) Fit some other models, including beauty and also other input variables. Con- sider at least one model with interactions. For each model, state what the predictors are, and what the inputs are (see Section 2.1), and explain the meaning of each of its coefficients.
+The folder beauty contains data from Hamermesh and Parker (2005) on student evaluations of instructors beauty and teaching quality for several courses at the University of Texas. The teaching evaluations were conducted at the end of the semester, and the beauty judgments were made later, by six students who had not attended the classes and were not aware of the course evaluations.
+(a) Run a regression using beauty (the variable btystdave) to predict course evaluations (courseevaluation), controlling for various other inputs. Display the fitted model graphically, and explaining the meaning of each of the coefficients, along with the residual standard deviation. Plot the residuals versus fitted values.
+
+(b) Fit some other models, including beauty and also other input variables. Consider at least one model with interactions. For each model, state what the predictors are, and what the inputs are (see Section 2.1), and explain the meaning of each of its coefficients.
 
 
 **For G&H 5:** the data can be found in the `AER` package, it's called `TeachingRatings`. The column names are different from those called out in the book, see `?TeachingRatings` for details. In part (b), let's consider "some other models" to mean "two or three" other models that you explain.
 
 
+(a)
 ```{r, message=FALSE, warning=FALSE}
-install.packages("AER")
 library(AER)
+#load data 
+beauty <- read.csv("ProfEvaltnsBeautyPublic.csv")
 
+
+#run regression on output course evaluation based on beauty predictor
+mod2 <- lm(beauty$courseevaluation ~ beauty$btystdave)
+summary(mod2)
+
+
+#Display fitted model
+dataplot <- ggplot(data = beauty, aes(x = btystdave, y = courseevaluation)) + 
+            geom_point() + 
+            theme_classic() +
+            geom_smooth(method = "lm")
+
+dataplot 
+
+
+#Plot resdiduals vs. fitted values
+plot(mod2)
+```
+
+*Interpretation of model* 
+
+1. *The intercept* represents the predicted course evaluation for a professor with an average beauty score of 0 (meaning that their beauty is average because this variable is centered around its mean).
+
+2. *The coefficient of btystddave* can be thought of as the comparison of mean course evaluations whose average beauty score varies by 1 point. For every 1 point increase in average beauty score, the course evaluation is predicted to increase 0.133 points. 
+
+
+(b)  
+
+**Alternative Model 1**
+```{r, message=FALSE, warning=FALSE}
+alt_mod1 <- lm(beauty$courseevaluation ~ beauty$btystdave + beauty$age + beauty$minority + beauty$female)
+summary(alt_mod1)
+```
+
+*Interpretation of Alternative Model 1* 
+
+* Predictors:
+  * Average Beauty Score 
+  * Age 
+  * Minority 
+  * Female
+
+* Inputs: 
+  * Average Beauty Score 
+  * Age 
+  * Minority 
+  * Female
+
+*Alternative Model 1 - Meaning of coefficients*
+
+1. *The intercept* represents the predicted course evaluation for a professor with the following: 
+* Average beauty score of 0 (meaning that their beauty is average because this variable is centered around its mean)
+* Age of 0 
+* Not a non-Caucasian minority
+* Not a female (i.e. a male)
+It is not possible to have a professor with an age of 0, so the intercept is not meaningful in this model. 
+
+2. *The coefficient of btystddave* can be thought of as the comparison of mean course evaluations whose average beauty score varies by 1 point, for the same values of age, minority, and female. For every 1 point increase in average beauty score, the course evaluation is predicted to increase 0.1399 points. 
+
+3. *The coefficient of age* can be thought of as the comparison of mean course evaluations whose age varies by 1 year, for the same values of average beauty, minority, and female. For every 1 year increase in age score, the course evaluation is predicted to decrease -0.002897 points.
+
+4. *The coefficient of minority* can be thought of as the comparison of mean course evaluations for professors who are a minority compared to those who are not, for the same values of average beauty, age, and female. The average course evaluation for had a minority score of 1 (meaning they are a minority) is -0.10872 lower than a professor who had a minority score of 0 (meaning they are not a minority), assuming all other variables are the same. 
+
+5. *The coefficient of female* can be thought of as the comparison of mean course evaluations for professors who are a female compared to those who are not, for the same values of average beauty, age, and minority. The average course evaluation for had a female score of 1 (meaning they are a female) is -0.20374 lower than a professor who had a female score of 0 (meaning they are not a female). 
+
+
+**Alternative Model 2**
+```{r, message=FALSE, warning=FALSE}
+alt_mod2 <- lm(beauty$courseevaluation ~ beauty$btystdave + beauty$female + beauty$btystdave:beauty$female)
+summary(alt_mod2)
 
 ```
+
+*Alternative Model 2 - Meaning of coefficients*
+
+*Interpretation of Alternative Model 2 (Model with Interaction)* 
+
+* Predictors:
+  * Average Beauty Score 
+  * Female
+  * Average Beauty Score:Female Interaction
+
+* Inputs: 
+  * Average Beauty Score 
+  * Female
+
+1. *The intercept* represents the predicted course evaluation for a professor with the following: 
+* Average beauty score of 0 (meaning that their beauty is average because this variable is centered around its mean)
+* Not a female (i.e. a male)
+
+2. *The coefficient of btystddave* can be thought of as the comparison of mean course evaluations whose average beauty score varies by 1 point, for the same value of female. For every 1 point increase in average beauty score, the course evaluation is predicted to increase 0.2003 points. 
+
+3. *The coefficient of female* can be thought of as the comparison of mean course evaluations for professors who are a female compared to those who are not, for the same values of average beauty, age, and minority. The average course evaluation for had a female score of 1 (meaning they are a female) is -0.20374 lower than a professor who had a female score of 0 (meaning they are not a female). 
+
+4. *The coefficient of the interaction term* can be thought of as the *difference* in the slope for average beauty score, compare professors who are female with professors who are not female. The slope for beauty score is -0.1123 lower for female professors than for those who are not female. 
+
 
