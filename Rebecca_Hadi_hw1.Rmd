@@ -1,0 +1,213 @@
+---
+title: "StatR 502 Homework 1"
+author: "Rebecca Hadi"
+date: "Due Thursday, Jan. 11, 2018 at 6:30 pm"
+output:
+  pdf_document:
+    toc: yes
+---
+
+## 1: Overplotting
+
+Load the data for this problem (the file `hw1data.rdata`) using the `load()` command. This will create a `data.frame` in your workspace called `pr1` (no assignment with `<-` or `=` needed!). The data frame has two columns, `x` and `y`, and there's a surprise hidden in it. Your job is to find the surprise through some exploratory plots. Once you've found it, make a plot that shows it nicely, and present that as your solution.
+
+This problem highlights one of the main drawbacks of `ggplot2`: it can be RAM-intensive and slow with large data sets. Usually, however, you don't need half a million points in a single plot. Transparency can help a lot, but
+subsets and statistical summaries can do a nice job without taxing your computer or your patience.
+
+
+```{r,message=FALSE, warning=FALSE}
+#load data
+load("hw1data.rdata")
+
+#bring in ggplot2
+library(ggplot2)
+#build plot
+ggplot(data = pr1, aes(x,y)) + 
+  geom_point(alpha = .05, shape = 15) + 
+  theme_light() + 
+  ggtitle("Smile!")  
+
+```
+
+
+
+## 2: Exploring new options
+
+Make three ggplots exploring different options. At least one of the plots should use facets, and none of them should be plain scatterplots (if you use `geom_point`, complement it with another `geom` or `stat`). You can choose any dataset(s) you've worked with in StatR 501, from other problems on this homework, or from your work/interests.
+
+Pick one of your plots to polish, and spend an extra 10-15 minutes on it adding nice labels, adjusting a theme element or two, making sure any factors are ordered in a meaningful way, etc.
+
+Some suggestions for geoms (but feel free to explore further!): `geom_rug`, `geom_boxplot`, `geom_text`, `geom_violin`, `stat_smooth`.
+
+* *First, I need to load and prepare my data for plotting. I decided to download a dataset from Kaggle that contained 17 years of electronic music reviews from the website "Resident Advisor"*
+
+```{r, message=FALSE, warning=FALSE}
+#load & look at data 
+music <- read.csv("RA_cleaned.csv")
+
+#reorder factor level of release month for later plotting
+music$release_month <- factor(music$release_month, levels = c("January", "February", "March","April","May","June","July","August","September","October","November","December"))
+
+```
+
+Plot 1
+```{r}
+ggplot(music,aes(x = release_year, y = num_comments, col = rating, shape = release_type)) +
+    geom_point(alpha = 1) + 
+    theme_classic() +  
+    coord_cartesian(ylim = c(0,100)) + 
+    ggtitle("Number of Comments over time by Rating and Release Type") + 
+    labs(x = "Album Release Year", 
+         y =  "Count of Comments", 
+         color = "Rating", 
+         shape = "Release Type")
+```
+
+Plot 2 
+```{r}
+ggplot(music,aes(x = release_year)) +
+    geom_bar(fill = "steelblue") + 
+    facet_wrap (~release_type) + 
+    theme_classic() + 
+    ggtitle("Count of Releases Reviewed by Release Type and Year") + 
+    labs(x = "Album Release Year", 
+         y =  "Count of Releases Reviewed")
+```
+
+Plot 3 
+```{r}
+ggplot(music, aes(x = release_month, col = release_type)) +  
+     stat_summary_bin(aes(y = rating), fun.y = "mean", geom = "point") + 
+     theme_classic() + 
+    theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=90, hjust=1)) +
+     ggtitle("Average Release Rating by Month and Release Type") + 
+     labs(x = "Release Month", 
+          y = "Average Rating", 
+          color = "Release Type")
+```
+
+
+## Problems from Gelman & Hill
+
+Section 3.9 (pp. 49-51), **do problems 2, 3, and 5**. In your write-up, please label them as G&H 2, G&H 3, and G&H 5. The `se.coef()` function in G&H 3 is part of the `arm` package (written to accompany the book).
+
+## G&H 2
+
+Suppose that, for a certain population, we can predict log earnings from log
+height as follows:
+
+A person who is 66 inches tall is predicted to have earnings of $30,000.
+Every increase of 1% in height corresponds to a predicted increase of 0.8% in
+earnings.
+
+(a) The earnings of approximately 95% of people fall within a factor of 1.1 of
+predicted values.
+Give the equation of the regression line and the residual standard deviation
+of the regression. 
+
+(b) Suppose the standard deviation of log heights is 5% in this population. What,
+then, is the R2 of the regression model described here?
+
+
+**For G&H 2:** The logs add a little twist to this problem. We'll be talking about transformations - especially log transformations - next week. A couple clarifications/hints:
+
+- "1% change in $x$ results in 0.8% change in $y$" means that the slope of $\log y$ versus $\log x$ is 0.8.
+
+- "Fall within a factor of 1.1" on the untransformed scale means "plus or minus 0.1" on the log scale. (Well, it really means $\pm \log(1.1)$ but $\log(1.1) = `r log(1.1)`$ so we'll call 0.1 a good-enough approximation.)
+
+
+
+(a)
+```{r, message=FALSE, warning=FALSE}
+#find intercept 
+y <- log(30000)
+x <- log(66) 
+beta <- .008/.01  #every 1% increase in height corresponds to a predicted increase of 0.8% in earnings
+
+intercept = y - beta*x 
+intercept
+
+log.y = intercept + beta * x
+
+#take the exponent to get result
+exp(log.y)
+
+
+#residual standard deviation 
+resid_sd <- log(30000)*log(1.1) #within a factor of 1.1 of predicted value
+resid_sd
+
+```
+Regression Line: 
+$ log(earnings) $ = Sexpr(intercept) + .08 * $log(height)$
+
+
+
+(b) 
+```{r,message= FALSE, warning=FALSE}
+#standard deviation of population (5% in heights)
+sd_pop = .05*log(66)
+sd_pop
+
+r_squared = 1 - (sd_pop^2 / resid_sd^2)
+
+r_squared
+
+```
+
+
+
+## G&H 3
+
+In this exercise you will simulate two variables that are statistically independent of each other to see what happens when we run a regression of one on the other.
+First generate 1000 data points from a normal distribution with mean 0 and standard deviation 1 by typing var1 <- rnorm(1000,0,1) in R. Generate another variable in the same way (call it var2). Run a regression of one variable on the other. Is the slope coefficient statistically significant?
+
+```{r,message=FALSE, warning=FALSE}
+set.seed(100)
+var1 <- rnorm(1000,0,1)
+var2 <- rnorm(1000,0,1)
+
+mod1 <- lm(var2 ~ var1)
+summary(mod1)
+```
+
+The slope coefficient for var1 is less than two standard errors away from zero, and therefore is *not statistically significant*. 
+
+
+Now run a simulation repeating this process 100 times. This can be done using a loop. From each simulation, save the z-score (the estimated coefficient of var1 divided by its standard error). If the absolute value of the z-score exceeds 2, the estimate is statistically significant. 
+
+How many of these 100 z-scores are statistically significant?
+```{r}
+z.scores <- rep (NA, 100) 
+for (k in 1:100) {
+var1 <- rnorm (1000,0,1)
+var2 <- rnorm (1000,0,1)
+fit <- lm (var2 ~ var1)
+z.scores[k] <- coef(fit)[2]/se.coef(fit)[2]
+}
+
+#check how many are statistically signficant (1.96 is z-score for 95%)
+table(z.scores >1.96)
+```
+
+2 out of 100 simulations resulted in z-scores that were statistically significant. 
+
+
+## G&H 5
+
+The folder beauty contains data from Hamermesh and Parker (2005) on student evaluations of instructors’ beauty and teaching quality for several courses at the University of Texas. The teaching evaluations were conducted at the end of the semester, and the beauty judgments were made later, by six students who had not attended the classes and were not aware of the course evaluations.
+(a) Run a regression using beauty (the variable btystdave) to predict course evaluations (courseevaluation), controlling for various other inputs. Dis- play the fitted model graphically, and explaining the meaning of each of the coefficients, along with the residual standard deviation. Plot the residuals versus fitted values.
+(b) Fit some other models, including beauty and also other input variables. Con- sider at least one model with interactions. For each model, state what the predictors are, and what the inputs are (see Section 2.1), and explain the meaning of each of its coefficients.
+
+
+**For G&H 5:** the data can be found in the `AER` package, it's called `TeachingRatings`. The column names are different from those called out in the book, see `?TeachingRatings` for details. In part (b), let's consider "some other models" to mean "two or three" other models that you explain.
+
+
+```{r, message=FALSE, warning=FALSE}
+install.packages("AER")
+library(AER)
+
+
+```
+
