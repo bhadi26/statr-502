@@ -1,0 +1,127 @@
+---
+title: "StatR 502 Homework 1"
+author: "Rebecca Hadi"
+date: "Due Thursday, Jan. 11, 2018 at 6:30 pm"
+output:
+  pdf_document:
+    toc: yes
+---
+
+## 1: Overplotting
+
+Load the data for this problem (the file `hw1data.rdata`) using the `load()` command. This will create a `data.frame` in your workspace called `pr1` (no assignment with `<-` or `=` needed!). The data frame has two columns, `x` and `y`, and there's a surprise hidden in it. Your job is to find the surprise through some exploratory plots. Once you've found it, make a plot that shows it nicely, and present that as your solution.
+
+This problem highlights one of the main drawbacks of `ggplot2`: it can be RAM-intensive and slow with large data sets. Usually, however, you don't need half a million points in a single plot. Transparency can help a lot, but
+subsets and statistical summaries can do a nice job without taxing your computer or your patience.
+
+
+```{r,message=FALSE, warning=FALSE}
+#load data
+load("C:\\Users\\BT0x\\Downloads\\hw1data.rdata")
+
+#bring in ggplot2
+library(ggplot2)
+#build plot
+ggplot(data = pr1, aes(x,y)) + 
+  geom_point(alpha = .05) + 
+  theme_light() + 
+  ggtitle("Smile!")  
+
+```
+
+
+
+## 2: Exploring new options
+
+Make three ggplots exploring different options. At least one of the plots should use facets, and none of them should be plain scatterplots (if you use `geom_point`, complement it with another `geom` or `stat`). You can choose any dataset(s) you've worked with in StatR 501, from other problems on this homework, or from your work/interests.
+
+Pick one of your plots to polish, and spend an extra 10-15 minutes on it adding nice labels, adjusting a theme element or two, making sure any factors are ordered in a meaningful way, etc.
+
+Some suggestions for geoms (but feel free to explore further!): `geom_rug`, `geom_boxplot`, `geom_text`, `geom_violin`, `stat_smooth`.
+
+* *First, I need to load and prepare my data for plotting. I decided to download a dataset from Kaggle that contained 17 years of electronic music reviews from the website "Resident Advisor"*
+
+```{r, message=FALSE, warning=FALSE}
+#load & look at data 
+music <- read.csv("Hw1 Data\\RA_cleaned.csv")
+
+#reorder factor level of release month for later plotting
+music$release_month <- factor(music$release_month, levels = c("January", "February", "March","April","May","June","July","August","September","October","November","December"))
+
+```
+
+Plot 1
+```{r}
+ggplot(music,aes(x = release_year, y = num_comments, col = rating, shape = release_type)) +
+    geom_point(alpha = 1) + 
+    theme_classic() +  
+    coord_cartesian(ylim = c(0,100)) + 
+    ggtitle("Number of Comments over time by Rating and Release Type") + 
+    labs(x = "Album Release Year", 
+         y =  "Count of Comments", 
+         color = "Rating", 
+         shape = "Release Type")
+```
+
+Plot 2 
+```{r}
+ggplot(music,aes(x = release_year)) +
+    geom_bar(fill = "steelblue") + 
+    facet_wrap (~release_type) + 
+    theme_classic() + 
+    ggtitle("Count of Releases Reviewed by Release Type and Year") + 
+    labs(x = "Album Release Year", 
+         y =  "Count of Releases Reviewed")
+```
+
+Plot 3 
+```{r}
+ggplot(music, aes(x = release_month, col = release_type)) +  
+     stat_summary_bin(aes(y = rating), fun.y = "mean", geom = "point") + 
+     theme_classic() + 
+     ggtitle("Average Release Rating by Month and Release Type") + 
+     labs(x = "Release Month", 
+          y = "Average Rating", 
+          color = "Release Type")
+```
+
+
+## Problems from Gelman & Hill
+
+Section 3.9 (pp. 49-51), **do problems 2, 3, and 5**. In your write-up, please label them as G&H 2, G&H 3, and G&H 5. The `se.coef()` function in G&H 3 is part of the `arm` package (written to accompany the book).
+
+## G&H 2
+
+Suppose that, for a certain population, we can predict log earnings from log
+height as follows:
+
+A person who is 66 inches tall is predicted to have earnings of $30,000.
+ Every increase of 1% in height corresponds to a predicted increase of 0.8% in
+earnings.
+
+(a) The earnings of approximately 95% of people fall within a factor of 1.1 of
+predicted values.
+Give the equation of the regression line and the residual standard deviation
+of the regression. 
+(b) Suppose the standard deviation of log heights is 5% in this population. What,
+then, is the R2 of the regression model described here?
+
+
+**For G&H 2:** The logs add a little twist to this problem. We'll be talking about transformations - especially log transformations - next week. A couple clarifications/hints:
+
+- "1% change in $x$ results in 0.8% change in $y$" means that the slope of $\log y$ versus $\log x$ is 0.8.
+
+- "Fall within a factor of 1.1" on the untransformed scale means "plus or minus 0.1" on the log scale. (Well, it really means $\pm \log(1.1)$ but $\log(1.1) = `r log(1.1)`$ so we'll call 0.1 a good-enough approximation.)
+
+
+
+## G&H 3
+
+
+
+## G&H 5
+
+
+
+**For G&H 5:** the data can be found in the `AER` package, it's called `TeachingRatings`. The column names are different from those called out in the book, see `?TeachingRatings` for details. In part (b), let's consider "some other models" to mean "two or three" other models that you explain.
+
