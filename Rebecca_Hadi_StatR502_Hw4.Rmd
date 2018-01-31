@@ -1,0 +1,318 @@
+---
+title: "StatR 502 Homework 4"
+author: "Rebecca Hadi"
+date: "Due Thursday, Feb. 1, 2018 at 6:30 pm"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    theme: paper
+    toc: yes
+---
+
+
+## 1: Offsets and complaints
+
+In the `faraway` package, the `esdcomp` data set is about the **count** of  complaints received about doctors working in an emergency room. 
+
+We could consider a logistic model, with `visits` as the number of "attempts", and `complaints` the number of "successes" (for a strange definition of "success"). But for rare events where we don't observe anywhere near the full range of possible probabilities (0 to 1), it can be better to model the events as counts.
+
+```{r, message=FALSE, warning=FALSE}
+#Load Package
+library(faraway)
+
+#Create data frame
+esdcomp <- as.data.frame(faraway::esdcomp)
+```
+
+
+
+**(a)** Verify my assertion that the ratio of complaints per visits is low. What are the mean and maximum observed probabilities of a complaint?
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+
+
+#Create ratio of complaint per visit
+esdcomp$complaint_per_visit <-  esdcomp$complaints / esdcomp$visits
+
+#Plot distribution of complaints vs. visits 
+complaint_plot <- ggplot(data = esdcomp, aes(x = visits, y = complaints)) + 
+                  geom_point() + 
+                  theme_classic() + 
+                  ggtitle("Complaints vs. Visits")
+
+complaint_plot 
+
+#Plot histogram of complaint ratio 
+ratio_hist <-   ggplot(data = esdcomp, aes(x = complaint_per_visit)) + 
+                geom_histogram(stat = "bin") + 
+                theme_classic() + 
+                ggtitle("Complain per Visit Ratio")
+
+ratio_hist 
+
+#Calculate the mean and maximum observed probabilities of a complaint  
+
+mean(esdcomp$complaint_per_visit)
+
+max(esdcomp$complaint_per_visit)
+
+```
+
+The mean observed probability of a complaint is `r mean(esdcomp$complaint_per_visit)`, or `r mean(esdcomp$complaint_per_visit) * 100`$\%$. 
+The maximum observed probability of a complaint is `r max(esdcomp$complaint_per_visit)`, or `r max(esdcomp$complaint_per_visit) * 100`$\%$.
+
+These observed probabilities are low (close to zero). 
+
+
+**(b)** The number of complaints a doctor receives is directly tied to the number of visits; to make the responses more comparable, it makes sense to model the *rates* (complaints/visits) instead of the raw counts. Fitting a Poisson GLM with a log-link function, our model is
+$$
+\begin{aligned}
+\log\left(\frac{\mbox{complaints}}{\mbox{visits}}\right) & = X\beta \\
+\Rightarrow \log\big(\mbox{complaints}\big) & = \log\big(\mbox{visits}\big) + X\beta.
+\end{aligned}
+$$
+
+This can be done with an `offset()` term in the model formula. Fit a Poisson GLM using all the predictors *except* `visits`, then add to the model formula `+ offset(log(visits))`. This tells GLM to add `log(visits)` to the linear predictor, but its coefficient will be fixed at 1 instead of estimated. The offset term does not show up as a fitted coefficient in the model summary, but it will be in the model call. This use of Poisson GLM is called a **rate model**.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#Fit Poisson Model using log(visits) as offset 
+pois_mod1 <- glm(log(complaints + 1) ~ residency + gender + revenue + hours + offset(log(visits)), 
+                 data = esdcomp, family = poisson)
+
+
+summary(pois_mod1)
+
+#Fit model with complaints instead of log(complaints) due to log(complaints) undefined at 0 
+pois_mod2 <- glm(complaints ~ residency + gender + revenue + hours + offset(log(visits)), 
+                 data = esdcomp, family = poisson)
+
+summary(pois_mod2)
+
+```
+
+(*Note:* the most common use of `offset()` is exactly this, but if for any other reason you want to "fix" one or more regression coefficient, while still estimating other coefficients, `offset()` is the way to do it.)
+
+**(c)** Run the function `drop1()` on your model. It will show you the AIC of the resulting model if you were to drop each of the model terms individually. Run the function `add1()` on your model. Set the `scope` argument to `~ (residency + gender + revenue + hours)^2`, which will tell `add1` to consider adding two-way interactions. Similar to `drop1`, it will show you the AIC if you were to add each of the possible terms. Add and/or drop a term or two to/from your model based on the `add1` and `drop1` advice. Show the summary of your model after a couple iterations. (*Note:* Do these things "behind the scenes". The only output you should include in your homework write-up is the model summary after an a couple iterations and perhaps a sentence saying what terms you added or dropped.)
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, eval = FALSE}
+drop1(pois_mod2)
+
+#Create new model removing revenue from model  
+pois_mod3 <- glm(complaints ~ residency + gender + hours + offset(log(visits)), 
+                 data = esdcomp, family = poisson)
+
+summary(pois_mod3)
+
+add1(pois_mod2, scope = ~ (residency + gender + revenue + hours)^2)
+add1(pois_mod3, scope = ~ (residency + gender + hours)^2)
+
+```
+
+
+```{r,message = FALSE, warning = FALSE}
+
+#Add Interaction between residency and hours based on AIC results 
+
+pois_mod4 <- glm(complaints ~ residency + gender + hours + offset(log(visits)), 
+                 data = esdcomp, family = poisson)
+
+summary(pois_mod4)
+
+```
+
+Based on the change in AIC from the drop1 and add1 results, I removed the term revenue and added an interaction between residency and hours. 
+
+
+
+**(d)** Try a quasi-Poisson model. What is its dispersion parameter? (Switching from Poisson to quasi-Poisson will scale the standard errors by the square root of the dispersion parameter, so a dispersion parameter of 1 indicates no difference. The Galapagos example in class had a dispersion parameter of about 32.)
+
+```{r, message= FALSE, warning = FALSE}
+
+pois_mod5 <- glm(complaints ~ residency + gender + hours + offset(log(visits)), 
+                 data = esdcomp, family = quasipoisson)
+
+summary(pois_mod5)
+
+```
+
+The dispersion parameter is 1.344696, indicating there is some overdispersion, but not a huge amount.  
+
+
+
+**(e)** Explain which model you think is a better choice. In a sentence, what is the difference in estimated coefficients between the Poisson and quasi-Poisson models?
+
+The coefficient estimates are indentical between the Poisson and quasi-Poission models (pois_mod4 and pois_mod5, respectively), but the difference lies in the standard errors. I think the quasi-Poission is a slightly better choice as it is more conservative about the standard error, because the variance in the data is 34% larger than what would be expected based on a true Poisson distribution, and as such the error estimates for the Poission model are slighlty "over-confident". 
+If our goal is to predict the rate of complaints, then having a more reasonable range of error would improve our estimates. If our goal is statistical inference, the resutls of the two models are not drastically different (but likely would be more significant with a higher dispersion paramater). 
+
+
+
+
+
+
+## 2: New data exploration
+
+Use the abalone dataset (posted on the website, with accompanying descriptive file). The response variable is the number of rings observed on the shell, which is directly related to the age of the abalone. We would like to predict the number of rings from other, more easily measured characteristics of the abalone.
+
+
+```{r,message=FALSE, warning=FALSE}
+#Load data
+abalone <- read.csv("abaloneTrain.csv")
+
+```
+
+
+**(a)** Make a few exploratory plots of the data.
+
+```{r, message = FALSE, warning = FALSE}
+library(ggplot2)
+
+#Length vs. Rings
+ggplot(data = abalone, aes(x = length, y = rings, col = sex)) + 
+       geom_point() + 
+       facet_wrap(~sex) + 
+       theme_classic() + 
+       ggtitle("Length vs. Rings")
+
+#Width vs. Rings 
+ggplot(data = abalone, aes(x = width, y = rings, col = sex)) + 
+       geom_point() + 
+       facet_wrap(~sex) + 
+       theme_classic() + 
+       ggtitle("Width vs. Rings")
+
+#Length vs. Width 
+ggplot(data = abalone, aes(x = length, y = width)) + 
+       geom_point() + 
+       theme_classic() + 
+       ggtitle("Length vs. Width")
+
+#Weight vs. Rings 
+ggplot(data = abalone, aes(x = allweight, y = rings)) + 
+       geom_point() + 
+       facet_wrap(~ sex) + 
+       theme_classic() + 
+       ggtitle("Weight vs.Rings")
+
+
+```
+
+
+
+
+
+**(b)** Fit a linear model (OLS) with rings as the response against all the other predictors (`rings ~ .`). Calculate the Cook's Distance and the leverages (you can use `hatvalues()` and `cooks.distance()` or `broom::augment`). Identify any concerning outliers and briefly discuss two possible coping strategies.
+
+```{r, message=FALSE, warning = FALSE}
+library(ggplot2)
+
+#Fit linear model
+mod1 <- lm(rings ~ ., data = abalone)
+
+#Augment Values 
+abalone.aug <- broom::augment(mod1, abalone)
+
+#Plot Cooks distinct 
+ggplot(data = abalone.aug, aes(x = length, y = rings, color = .cooksd)) + 
+       geom_point() + 
+       geom_line(aes(y = .fitted), color = "black") + 
+       geom_text(aes(label = ifelse(.cooksd > 4 / nrow(abalone.aug), length, ""))) + 
+       theme_classic() + 
+       ggtitle("Outlier Plot")
+
+
+```
+
+Based on the plot of Cook's distance, it seems that there are quite a few outliers in the data set. Given that the outcome is a count variable (count of rings), the best way to handle outliers would be to **change the modeling approach** to a Poisson (or quasi Poisson) to see how that impacts the model fit. Another adjustment could be to use an offset or log transform for one of the predictor variables. 
+
+
+
+## Book problem (singular!)
+
+**Do G&H #6 and the additional part (d) below** (pp. 133). Rather than using the data from the book website, use the `congress.txt` data on the course website. I added better column names, calculated vote proportions, and removed rows where the seat was uncontested. The `incumbent` column is coded as `-1` for republican incumbent, `0` for open race, and `1` for democratic incumbent. For part (b), you can use any robust regression method. The book suggests $t$-regression via `hett::tlm`, but feel free to explore others. Quantile regression (e.g., `quantreg::rq`) and `robustbase::lmrob` which uses an "MM estimator" are popular.
+
+## G & H 6 
+Robust linear regression using the t model: The folder congress has the votes
+for the Democratic and Republican candidates in each U.S. congressional district
+in 1988, along with the parties' vote proportions in 1986 and an indicator for
+whether the incumbent was running for reelection in 1988. For your analysis,
+just use the elections that were contested by both parties in both years.
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+
+#Load data 
+congress <-as.data.frame(read.table("congress.txt"))
+
+```
+
+
+
+(a) Fit a linear regression (with the usual normal-distribution model for the errors)
+predicting 1988 Democratic vote share from the other variables and
+assess model fit.
+
+
+```{r, message = FALSE, warning = FALSE}
+
+congress.lm <- lm(dem_prop_88 ~ dem_prop_86 + incumbent, data = congress)
+
+summary(congress.lm)
+
+```
+
+**Model fit** 
+
+This model performs reasonably well, with an $r^2$ of 0.8451. The coefficiencts included are all statistically significant. 
+
+
+(b) Fit a t-regression model predicting 1988 Democratic vote share from the other
+variables and assess model fit; to fit this model in R you can use the tlm()
+function in the hett package. (See the end of Section C.2 for instructions on
+loading R packages.)
+
+```{r, message=FALSE, warning = FALSE}
+
+#Fit Quantile Regression Model
+congress.quant <- quantreg::rq(dem_prop_88 ~ dem_prop_86 + incumbent, data = congress)
+
+summary(congress.quant)
+
+```
+
+
+(c) Which model do you prefer?
+```{r, message = FALSE, warning = FALSE}
+library(broom)
+library(dplyr)
+library(wesanderson)
+
+mod_list <- list(LM = congress.lm, quantile = congress.quant) 
+congress_aug <- lapply(mod_list, augment) %>% 
+                 bind_rows(.id = "model")
+
+ggplot(congress_aug, aes(x = dem_prop_86, y = dem_prop_88))  +
+       geom_point() +
+       geom_line(aes(y = .fitted, color = model), size = 1.2) +
+       scale_color_manual(values = wes_palette("GrandBudapest2", n = 2, type ="discrete"),
+                          breaks =  c("LM","quantile")) + 
+       theme_classic() + 
+       ggtitle("Democratic Proportion of Vote Models")
+
+
+```
+
+Both models make similar predictions, so I don't have a strong preference between the two. The quantile model seems to have lower predictions when republicans have majority of the vote in 1986. 
+
+
+**(d)** Do you like the way `incumbent` is coded? You *could* change it to a factor, what additional comparisons would that allow you to make?
+
+Incumbent being coded as a continuous variable doesn't make sense because it only has three distinct values that summarize different categories, so changing to a factor makes sense. This allows us to fit three additional models and see how the proportion of votes in 1986 change depending on whether the candidaate was an incumbent or not. 
+
+
+
+
+
