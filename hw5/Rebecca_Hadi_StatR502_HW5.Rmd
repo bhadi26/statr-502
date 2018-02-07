@@ -1,0 +1,139 @@
+---
+title: "StatR 502 Homework 5"
+author: "Rebecca Hadi"
+date: "Due Thursday, Feb. 8, 2018 at 6:30 pm"
+output:   pdf_document
+---
+
+
+**(1)** Abalone Models
+
+```{r, message = FALSE, warning = FALSE, include = FALSE}
+#Load Data 
+abalone <- read.csv("abaloneTrain.csv")
+
+head(abalone)
+
+```
+
+
+(a) Using the abalone data from HW 4, use a Box-Cox test to determine whether or not a transformation of the response variable (number of rings) would be appropriate.
+
+```{r, message = FALSE, warning = FALSE}
+library(MASS)
+lambda <- boxcox(rings ~ length + width + height + allweight + factor(sex), data = abalone, 
+                 lambda = seq(-.5, .5, length = 50))
+
+```
+
+The Box-Cox Plot shows us that the Log Likelihood is maximized around $\lambda$ = -0.2.  This would suggest that a transformation of the response variable is appropriate.  Since the $\lambda$ is negative, the response variable transformation can be transformed into $y^{-0.2}$.  
+
+```{r, message = FALSE, warning = FALSE}
+#Transformed Model
+mod0 <- lm((rings) ~ length + width + height + allweight + factor(sex), 
+            data = abalone) 
+mod1 <- lm((rings)^-0.2 ~ length + width + height + allweight + factor(sex),
+            data = abalone) 
+```
+
+
+
+(b) Compare the model fit that results of any transformation you may have done in part (a) with a Poisson GLM modeling the number of rings as counts. Note that AIC/BIC cannot help you compare a Poisson GLM with a Gaussian LM--the different error assumptions make the likelihoods incomparable.
+
+```{r, message=FALSE, warning = FALSE}
+
+pois.mod <- glm(rings ~ length + width + height + allweight + factor(sex), 
+                data = abalone, family = poisson)
+
+#Compare residual plots 
+plot(pois.mod,1)
+plot(mod1,1)
+
+```
+
+Comparing the residual plots of the Poisson model (pois.mod) to the transformed linear model (mod1), we see that both seem to have some underlying pattern defining the residuals.  However, when we look at the scale, we see that the scale of the residuals for the Box-Cox transformed model ranges between -0.1 and 0.1, which is a much tighter distribution than the Poisson that ranges between -2 and 4.  This would imply that the Box-Cox transformed model has a better fit than the Poisson model. 
+
+
+(c) Starting with whichever model you preferred in part (b), search for "best" models using step wise regression (or other model search strategies such as `leaps`) to find "best" models. Use at least two search methods (e.g., forward, backward, both, using AIC, using BIC) with different starting points. Do you get the same final model with the different methods?
+
+
+The final model from the backward step AIC is different than the model I get from the forward AIC. In the backward AIC, I started with a model with no interactions and told it to remove terms to improve fit, so the interactions that are part of the forward stepAIC scope were not considered. In the forward stepAIC, some of the interactions improved the model fit and were therefore included. 
+
+
+```{r, message = FALSE, warning = FALSE}
+
+#Backward stepAIC
+backward.mod1 <- MASS::stepAIC(mod1, direction = "backward")
+
+#Forward stepAIC
+forward.mod1 <- MASS::stepAIC(mod1, scope = ~ (length + width + height + allweight + factor(sex))^2, direction = "forward")
+
+
+```
+
+
+(d) Use one of your search methods from (c) on a subset of the data excluding the big outlier. How does it change your results? Do you think it's worth omitting the outlier, or would you prefer another strategy?
+
+```{r, message = FALSE, warning = FALSE}
+library(broom)
+library(dplyr)
+library(ggplot2)
+
+#Model output from stepAIC 
+step.mod <- lm((rings)^-0.2 ~ width + height + allweight + factor(sex), data = abalone) 
+
+##Augment model to find outlier 
+step.mod.aug <- augment(step.mod, abalone)
+
+#add transformed rings variable to step.mod.aug 
+step.mod.aug$rings_transform <- (step.mod.aug$rings)^-0.2
+
+
+#Create subset of data without large outlier 
+step.mod.aug.filter <-  step.mod.aug %>% 
+                        filter(.cooksd != max(.cooksd))
+
+#Refit mod 1 on this subset of data 
+mod1.filter <- lm((rings)^-0.2 ~ length + width + height + allweight + factor(sex), data = step.mod.aug.filter) 
+
+#Perform backward stepAIC on this model with filtered data 
+backward.mod1.filter <- MASS::stepAIC(mod1.filter, direction = "backward")
+
+step.mod.filter <- lm((rings)^-0.2 ~ width + height + allweight + factor(sex), data = step.mod.aug.filter) 
+
+#Compare models using AIC 
+AIC(step.mod, step.mod.filter)
+
+#Augment filtered model 
+step.mod.filter.aug  <- augment(step.mod.filter, step.mod.aug.filter)
+
+#Check the max cooksd for this new model 
+max(step.mod.filter.aug$.cooksd)
+
+```
+
+
+Using the backward stepAIC model on both the filtered and unfiltered data set yields the same predictors. However, the coefficients in the filtered model are differently. Comparing the AIC between the two, the filtered model yields a lower AIC, implying better fit.  In this case, I prefer the approach of removing this outlier. Checking the cooksd in the model, there are still values that would fail the $4 / n$ test, but not to the extreme extent of the outlier in the unfiltered model (that was `r round(max(step.mod.aug$.cooksd),2)`), where as the max Cook's Distance in the filtered model is `r round(max(step.mod.filter.aug$.cooksd),2)`. 
+
+
+```{r, message = FALSE, include = FALSE}
+#Exploratory work for part d 
+
+#Look at data 
+head(step.mod.aug)
+
+
+#Plot data to find outlier 
+ggplot(data = step.mod.aug, aes(x = rings, y = .cooksd)) + 
+       geom_point() 
+
+ggplot(data = step.mod.aug, aes(x = width, y = rings_transform)) +  
+      geom_point() + 
+      facet_wrap (~sex) + 
+      geom_line(aes(y = .fitted), color = "black") +
+      geom_text(aes(label = ifelse(.cooksd > 20, .cooksd, "")))
+
+```
+
+
+
