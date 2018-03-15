@@ -1,0 +1,308 @@
+---
+title: 'Money Talks: An Analysis of Profitability with TMDB Dataset'
+subtitle: 'StatR 502'
+author: "Rebecca Hadi"
+date: "3/5/2018"
+output: pdf_document
+toc: yes
+---
+
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+setwd("~/Documents/StatR-502/finalproject")
+movies <- read.csv("Data/tmdb_5000_movies.csv") #original dataset
+movies.pr <- read.csv("Data/processed_movies.csv")
+
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+#load packages
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(broom)
+library(ggthemes)
+library(vcd)
+library(broom)
+library(car)
+library(arm) #invlogit
+library(kableExtra)
+```
+
+## Analysis Objective
+Research question: To what extent can the probability that a movie will be profitable be modeled given the predictor variables?
+
+Goals of analysis: 
+
+1. Understand ability to predict profitability in this data set. 
+
+2. Identify if genre has any impact on profitability in this data set.
+
+3. Identify any other variables that have an impact on profitability.
+
+## The Data 
+This data set was found on Kaggle at https://www.kaggle.com/tmdb/tmdb-movie-metadata/data.  It contains various data points from the website "The Movie Database" (https://www.themoviedb.org) for `r nrow(movies)` movies. TMDb is a community built movie and TV database.  It is not clear how the sample was derived as there are likely more than ~5000 movies that exist. It's a fair assumption that all movies get made with the intention of being profitable (so that even more movies can be made!), so it would be interesting to understand if there are any significant predictors of profitability. 
+
+The initial data set before cleaning contains one record per movie with columns such as budget, revenue, genre, release date, keywords, production company, vote average, vote count, popularity, tagline, title, language, production country, and run time. 
+
+With my modeling question in mind and uncertainty around how the data were pulled from the site, I wanted to investigate the data set and remove possible sources of bias and skew. The final data set I used after the cleaning and feature engineering is described below. 
+
+## Data Cleaning 
+
+**Data removed (movies can meet multiple criteria):**
+
+-    Movies that were not released in English. Upon inspection, the data were highly skewed toward English as a release language. In my project proposal I had included original language as a potential predictor, but after examining my data set I decided that there were not enough data for non-English language movies for this to be a meaningful variable.    
+
+-    Movies that were released prior to the year 2000.  It's possible that inflation could skew the input variables of revenue and budget, so I wanted to only look at movies that were released somewhat recently, which I am defining as the year 2000 or greater.    
+
+-    Movies that had zero revenue. These appear to be missing values from the TMDB data set. For example, the movie "Blades of Glory" was listed as having zero revenue (which was consistent with the TMBD site), but a quick Google search revealed this movie actually had $146M in revenue.     
+
+-    Movies that had not yet been released.    
+
+-    Movies with the genre of "TV Movie". This is a different type of movie than what we are trying to model (e.g. revenue from box office)   
+
+After cleaning, I am left with `r nrow(movies.pr)` movies for analysis. 
+
+**Features engineered:**
+
+-    Profit: Difference between revenue and budget.    
+
+-    Profitable: Binary indicator of whether or not profit was greater than 0. This is the response variable. 
+
+-    Release year: Extracted from release date.    
+
+-    Genre:   The original genre data was in JSON format. Upon extracting, it created a data frame that had one row per genre (making a single movie have as many rows as distinct genres).  I had a few ideas on how to handle, ranging from picking a primary/arbitrary genre for each movie to force there to be one row, or allowing the data to have multiple rows.  I ended up manipulating the data to create a column specific to each genre (e.g. "f.action" is a 0 or 1 if the movie has action as the genre). Then, I created meaningful grouping of genres based on what the most common genres in the data set were and common groupings that exist in popular culture. 
+
+-    Event:  Identifies if the movie was released during a seasonal event (Holiday - Nov/Dec or Summer - June, July, August) or not.     
+
+Further, I removed some columns from the data set that were not going to be used in analysis (e.g. keywords, production company).
+
+## Exploring the data 
+
+The final data set I am working with looks as follows: 
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+knitr::kable(head(movies.pr[,2:14]), format = "latex") %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+The response variable is profitability, so let's take a look at how the data looks by genre based on the number of votes. 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+ggplot(data = movies.pr, aes(x = genre, y = vote_count)) + 
+          geom_boxplot() + 
+          theme_few() + 
+          coord_flip()  +  
+          labs(x = "Genre", y = "Vote Count") +
+          facet_wrap(~profitable) + 
+          ggtitle("Distribution of Votes by Genre and Profitability")
+```
+
+In the data set, we can also see how the number of movies and how the proportion of profitability varies over time. 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+
+ggplot(data = movies.pr, aes(x = release_year, fill = profitable)) + 
+          geom_bar(stat = "count") + 
+          theme_few() + 
+          labs(x = "Release year", y = "Number of Movies") +
+          ggtitle("Count of movies by Year and Profitability")
+```
+
+## Selecting a model
+
+For my research question, I want to understand the relationship between the various predictor variables in my data set and my *binary* response variable: profitability. Because the response variable is binary, I'm going to be using **logistic regression**, otherwise known as a Generalized Linear Model with a binomial link function. My predicted value will then be a measure of the probability of profitability. 
+
+For simplicity and to establish a baseline, I started with the following model: 
+
+```{r, message = FALSE, echo = FALSE}
+mod1 <-  glm(data = movies.pr, profitable ~ budget , family = binomial(link = "logit"))
+display(mod1)
+```
+
+This model offered some improvement from the null model, but I have other potentially meaningful variables and transformations to consider. 
+
+## Model Refinement 
+In my project proposal, I was planning on including both *budget* and *revenue* as predictor variables. However, when I applied this to the model, I received a warning indicating that the algorithm did not converge. I then used the vif() function to evaluate the col-linearity of the metrics, both of which had *huge* values when included in the model.  After some critical thinking, I realized that because profit is a calculation based on revenue and budget, that these perfectly explained the outcome.  As a result, the models I fit included either budget *or* revenue, but not both.
+
+The other variables I have to consider contain the following: 
+
+- Release date 
+
+- Release year 
+
+- Genre 
+
+- Run time 
+
+- Vote average 
+
+- Vote count 
+
+- Event
+
+After evaluating several models using BIC, I found that *genre*, *event*, and *release year* were not improving model fit and as a result were removed from the model. From an inference perspective, it could make sense to include these predictors to understand how the data varies across the factor levels. 
+
+## Transformations Considered 
+
+Upon visual inspection of my data set, I noticed that revenue and budget did not appear to be normally distributed so I applied a log transformation to see if that improved fit. Surprisingly, the BIC was higher in the log transformed models than the non-transformed models, so I ended up *not* using the log transform for budget, but it did make a slight improvement for the revenue model so it was kept there. 
+
+For interpret-ability of coefficients, I centered and scaled the following variables: 
+
+  - Vote count 
+  
+  - Run time (I had also evaluated a log transform on this variable due to non-normality but it did not improve model BIC)
+  
+  - Vote average
+
+Because these are linear transformations, they will not impact model fit. 
+
+Regarding outliers, I had previously trimmed my data set for especially low profits or budgets (less than 10,000 dollars). 
+
+
+## Final Model 
+
+I arrived at this final model by adding in each of the predictor variables listed above and evaluating the BIC. I'm using BIC because I want to penalize not only for the number of coefficients estimated, but also the number of observations. I'm able to use BIC as a measure to compare the model performance because I'm not altering the response variable or link function (all use the binomial link function). 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+#scale variables
+movies.pr$vote_count.z <- (movies.pr$vote_count - mean(movies.pr$vote_count)) / sd(movies.pr$vote_count)
+movies.pr$runtime.z <- (movies.pr$runtime - mean(movies.pr$runtime)) / sd(movies.pr$runtime)
+movies.pr$vote_average.z <- (movies.pr$vote_average - mean(movies.pr$vote_average)) / sd(movies.pr$vote_average)
+
+#final mod
+final.mod <-  glm(data = movies.pr,
+                  profitable.ind ~ log(revenue)  +  runtime.z + vote_average.z + vote_count.z, 
+                  family = binomial(link = "logit"))
+
+summary(final.mod)
+```
+
+
+## Model Interpretation 
+
+- Intercept: The probability that a movie is profitable assuming log revenue is 0, average run time, average vote score, and average number of votes is `r format(round(invlogit(coef(final.mod)[1]) * 100,2),scientific=FALSE)`$\%$.  This probability is small because revenue of 1 unlikely to occur in the data set, and also very unlikely to be profitable if it did exist.
+
+- Log Revenue: For every 1 unit increase in log revenue, the log odds of profitability increases by 1.41. Calculating at the mean log revenue (controlling for all other variables), the probability it is profitable is `r round(invlogit( coef(final.mod)[1] + coef(final.mod)[2]*mean(log(movies.pr$revenue))) * 100,2)`$\%$. 
+
+- Run time (centered around mean and scaled by 1 std dev): If the run time increases by 1 standard deviation, the log odds of profitability decreases by `r coef(final.mod)[3]`.
+
+- Vote average (centered around mean and scaled by 1 std dev): If the vote average increases by 1 standard deviation, the log odds of profitability increases by `r coef(final.mod)[4]`.
+
+- Vote count (centered around mean and scaled by 1 std dev): If the vote count increases by 1 standard deviation, the log odds of profitability increases by `r coef(final.mod)[5]`.
+
+
+## Model Evaluation
+
+```{r, echo = FALSE}
+knitr::kable(BIC(mod1,final.mod), caption = "BIC output of Initial model vs. Final model")
+```
+
+The BIC of the final model is considerably lower than the initial model fit. The threshold for *strong* evidence of improved fit is a difference in BIC of at least 10, and it is clear that these results show an improvement of `r round(BIC(mod1) - BIC(final.mod),0)`.  
+
+Below is a plot that makes use of the geom_smooth() function given one predictor, log revenue. This is not the final model I ended up with, but is helpful to visualize the probability compared the observed outcome.  The blue dots are the fitted probabilities based on the final model. 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+final.mod.aug <- augment(final.mod, type.predict = "response")
+
+#let's plot!  (#just a regular smoother)
+ggplot(data = final.mod.aug, aes(x = log.revenue., y = profitable.ind)) + 
+        geom_jitter(height = 0.02) +  
+        geom_point(data = final.mod.aug, aes(x = log.revenue., y = .fitted), color = "#00cdcd", alpha = 0.2) +
+        geom_smooth(method = "glm", se = F, 
+                    method.args = list(family = "binomial")) + 
+        theme_few() + 
+        labs(x = "Log Revenue", y = "Probability of Profitability") +
+        ggtitle("Profitability - Actual vs. Predicted")
+```
+
+To evaluate the model, I want to see how the residuals look. Since the response variable is binary and the predicted value is a probability, to get a reasonable picture of the residuals I want to create bins to look at the average residual across a number of groups.  
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+#Plot redisuals (binned)
+#bin
+profit.bin <- final.mod.aug %>%
+                mutate(q_group = cut(log.revenue.,
+                                     breaks = quantile(log.revenue., seq(0, 1, length.out = 30),
+                                                       include.lowest = TRUE))) %>%
+                group_by(q_group) %>%
+                summarize(.resid = mean(.resid),
+                          log.revenue = mean(log.revenue.))
+
+#plot
+resid.plot <- ggplot(profit.bin, aes(x = log.revenue, y = .resid)) +
+                geom_point() +
+                geom_smooth() + 
+                ggtitle("Final Model") + 
+                labs(x = "Log Revenue", y = "Residual")
+
+resid.plot + theme_few()
+```
+
+Based on this residual plot, it appears there may be some underlying pattern that is not being addressed in the model. Generally, the residuals fall within -0.2 and -0.2.  
+
+Another method of evaluating the model is to compare the predicted values to the observed values. Since the predictions are in terms of probability, I am rounding to arrive at whether the model predicted the movie to be profitable or not (e.g. 60% probability of being profitable would be rounded to a probability indicator of 1).
+
+The below table and plot summarize the comparison. 
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+
+#Compare predicted to actual 
+final.mod.aug$predicted <- round(final.mod.aug$.fitted)
+
+knitr::kable(with(final.mod.aug, table(profitable.ind, predicted)), caption = "Confusion Matrix - Observed (row) vs. Predicted (column)")
+
+
+#plot with comparison of prediction
+ggplot(data = final.mod.aug, aes(x = log.revenue., y = profitable.ind)) + 
+  geom_jitter(height = 0.02) +  
+  geom_point(data = final.mod.aug, aes(x = log.revenue., y = .fitted), color = "#00cdcd", alpha = 0.2) +
+  theme_few() + 
+  labs(x = "Log Revenue", y = "Probability of Profitability") +
+  ggtitle("Profitability - Observed vs. Predicted") + 
+  facet_grid(profitable.ind ~ predicted)
+```
+
+Based on the plot and table above, the model accurately predicted the profitability outcome for `r nrow(filter(final.mod.aug, profitable.ind == 1 & predicted == 1)) + nrow(filter(final.mod.aug, profitable.ind == 0 & predicted == 0))` movies.  The model was more likely to predict that a movie was profitable when it wasn't. 
+
+## Conclusions 
+The conclusions I draw from the model are the following: 
+
+  - Movies with higher revenue are more likely to be profitable.
+  
+  - Movies that are significantly longer than average have a decreased profitability of being profitable. 
+  
+  - Movies with significantly more votes than average have an increased probability of being profitable. 
+  
+  - Movies with a significantly higher rating (vote average) than average have an increase probability of being profitable. 
+  
+  - Genre and event did not appear to be significant predictors of profitability. 
+  
+  - Pattern of average residuals indicate there may be some variable not being addressed.
+  
+These conclusions are fairly intuitive, although the effect of run time was less obvious to me. 
+
+
+## Potential Next Steps 
+
+Cleaning the data set to extract genre was significantly more complicated than I had initially anticipated and planned for, especially since it was my first time working the JSON data. If I had more time, I would extent this project in the following ways: 
+
+- Gain a better understanding of how the sample of 5,000 movies was generated. 
+
+- Cast genre as a random effect using mixed level modeling and evaluate model performance. 
+
+- Develop a more precise method of determining "event". In the interest of time, I set this up at the month level. If I were to be more thorough, I would find specific movie event dates for each year (e.g. Thanksgiving, Christmas, Valentine's Day) and also do more research on events that tend to be large movie releases. 
+
+- Better diagnose the pattern in residuals from the final model. 
+
+- Identify a way to incorporate both budget and revenue in the model while still having the model converge. I'm not sure if this is possible statistically, but it makes sense that these would *both* be relevant predictors. 
+
+## Shiny app 
+
+An interactive way to explore the data set and evaluated models can be viewed by running the following code: 
+
+shiny::runGist("3f70ad037e1960c61d9200ef70582bbe")
+
+
+
+
+
+

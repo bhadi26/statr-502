@@ -1,0 +1,179 @@
+---
+title: "Final Project Results"
+author: "Rebecca Hadi"
+date: "3/13/2018"
+output: pdf_document
+---
+```{r,include = FALSE}
+library(ggplot2)
+library(dplyr)
+library(broom)
+library(car)
+library(arm) #invlogit
+library(ggthemes)
+
+
+#Bring in data and set wd 
+setwd("~/Documents/StatR-502/finalproject")
+movies.pr <- read.csv("Data/processed_movies.csv")
+
+```
+
+
+## Models, Variables, and Transformations (Oh my!)
+
+### Initial Model 
+For my research question, I want to understand the relationship between the various predictor variables in my data set and my *binary* response variable: profitability. Because the response variable is binary, I'm going to be using **logistic regression**, otherwise known as a Generalized Linear Model with a binomial link function. My predicted value will then be a measure of the probability of profitability. 
+
+For simplicity and to establish a baseline, I started with the following model: 
+
+```{r, message = FALSE, echo = FALSE}
+mod1 <-  glm(data = movies.pr, profitable ~ budget , family = binomial(link = "logit"))
+display(mod1)
+```
+
+This model offered some improvement from the null model, but I have other potentially meaningful variables and transformations to consider. 
+
+In my project proposal, I was planning on including both *budget* and *revenue* in as predictor variables. However, when I applied this to the model, I received a warning indicating that the algorithm did not converge. I then used the vif() function to evaluate the collinearity of the metrics, both of which had *huge* values when included in the model.  After some critical thinking, I realized that because profit is a calculation based on revenue and budget, that these perfectly explained the outcome.  As a result, the models I fit included either budget *or* revenue, but not both.
+
+The other variables I have to consider contain the following: 
+- Release date 
+- Release year 
+- Genre 
+- Runtime 
+- Vote average 
+- Vote count 
+- Event
+
+After evaluating several models using BIC, I found that *genre*, *event*, and *release year* were not improving model fit and as a result were removed from the model. From an inference perspective, it could make sense to include these predictors to understand how the data varies across the factor levels. 
+
+### Transformations considered 
+
+Upon visual inspection of my data set, I noticed that revenue and budget did not appear to be normally distributed so I applied a log transformation to see if that improved fit. Surprisingly, the AIC was higher in the log transformed models than the non-transformed models, so I ended up *not* using the log transform for budget, but it did make a slight improvement for the revenue model so it was kept there. 
+
+For interpretability of coefficients, I centered and scaled the following variables: 
+  - Vote count 
+  - Run time (I had also evaluated a log transform on this varaible due to non-normality but it did not improve model BIC)
+  - Vote average
+
+Regarding outliers, I had previously trimmed my data set for especially low profits or budgets (less than 10,000 dollars). 
+
+
+### Final Model 
+
+I arrived at this final model by adding in each of the predictor variables listed above and evaluating the BIC. I'm using BIC because I want to penalize not only for the number of coefficients estimated, but also the number of obserations. I'm able to use BIC as a measure to compare the model performance because I'm not altering the response variable or link function (all use the binomial link function). 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+#scale variables
+movies.pr$vote_count.z <- (movies.pr$vote_count - mean(movies.pr$vote_count)) / sd(movies.pr$vote_count)
+movies.pr$runtime.z <- (movies.pr$runtime - mean(movies.pr$runtime)) / sd(movies.pr$runtime)
+movies.pr$vote_average.z <- (movies.pr$vote_average - mean(movies.pr$vote_average)) / sd(movies.pr$vote_average)
+
+#final mod
+final.mod <-  glm(data = movies.pr,
+                  profitable.ind ~ log(revenue)  +  runtime.z + vote_average.z + vote_count.z, 
+                  family = binomial(link = "logit"))
+
+summary(final.mod)
+
+```
+
+
+**Model Interpretation** 
+- Intercept: The probability that a movie is profitability assuming log revenue is 0, average run time, average vote score, and average number of votes is `r format(round(invlogit(coef(final.mod)[1]) * 100,2),scientific=FALSE)` $\%$.  This probability is small because revenue of 1 unlikely to occur in the data set, and also very unlikley to be profitable if it did exist.
+- Log Revenue: For every 1 unit increase in log revenue, the log odds of profitability increases by 1.41. Calculating at the mean log revenue (controlling for all other variables),   `r format(round(exp(mean(log(movies.pr$revenue))),2),scientific=FALSE)`, the probability it is profitable is `r invlogit( coef(final.mod)[1] + coef(final.mod)[2]*mean(log(movies.pr$revenue))) * 100` $\%$. 
+- Runtime (centered around mean and scaled by 1 std dev): If the run time increases by 1 standard deviation, the log odds of profitability decreases by `r coef(final.mod)[3]`.
+- Vote average (centered around mean and scaled by 1 std dev): If the vote average increases by 1 standard deviation, the log odds of profitability increases by `r coef(final.mod)[4]`.
+- Vote count (centered around mean and scaled by 1 std dev): If the vote count increases by 1 standard deviation, the log odds of profitability increases by `r coef(final.mod)[5]`.
+
+The conclusions I draw from the model are the following: 
+  - Movies with higher revenue are more likely to be profitable 
+  - Movies that are longer than average have a decreased profitability of being profitable. 
+  - Movies with more votes than average have an increased probalility of being profitable. 
+  - Movies with a higher rating (vote average) than average have an increase probability of being profitable. 
+  
+These conclusions are fairly intuitive, although the effect of run time was less obvious to me. 
+
+## Model Evaluation
+
+```{r, echo = FALSE}
+knitr::kable(BIC(mod1,final.mod), caption = "BIC output of Initial model vs. Final model")
+```
+
+The BIC of the final model is considerably lower than the initial model fit. 
+
+Below is a plot that makes use of the geom_smooth function given one predictor, log revenue. This is not the final model I ended up with, but is helpful to visualize the probability compared the outcome.  The blue dots are the fitted probabilites based on the final model. 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+final.mod.aug <- augment(final.mod, type.predict = "response")
+
+#let's plot!  (#just a regular smoother)
+ggplot(data = final.mod.aug, aes(x = log.revenue., y = profitable.ind)) + 
+        geom_jitter(height = 0.02) +  
+        geom_point(data = final.mod.aug, aes(x = log.revenue., y = .fitted), color = "#00cdcd", alpha = 0.2) +
+        geom_smooth(method = "glm", se = F, 
+                    method.args = list(family = "binomial")) + 
+        theme_few() + 
+        labs(x = "Log Revenue", y = "Probability of Profitability") +
+        ggtitle("Profitability - Actual vs. Predicted")
+```
+
+
+
+To evaluate the model, I want to see how the residuals look. Since the response binary is binary and the predicted value is a probability, to get a reasonable picture of the residuals I want to create bins to look at the average residual across a number of groups.  
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+#Plot redisuals (binned)
+#bin
+profit.bin <- final.mod.aug %>%
+                mutate(q_group = cut(log.revenue.,
+                                     breaks = quantile(log.revenue., seq(0, 1, length.out = 30),
+                                                       include.lowest = TRUE))) %>%
+                group_by(q_group) %>%
+                summarize(.resid = mean(.resid),
+                          log.revenue = mean(log.revenue.))
+
+#plot
+resid.plot <- ggplot(profit.bin, aes(x = log.revenue, y = .resid)) +
+                geom_point() +
+                geom_smooth() + 
+                ggtitle("Final Model") + 
+                labs(x = "Log Revenue", y = "Residual")
+
+resid.plot + theme_few()
+```
+
+Based on this residual plot, it appears there may be some underlying pattern that we are not addressing with our model. Generally, the residuals fall within -0.2 and -0.2.  
+
+Another method of evaluating our model is to compare the predicted values to the actual values. Since our predictions are in terms of probability, I am rounding to arrive at whether the model predicted the movie to be profitable or not (e.g. 60% probability of being profitable would be rounded to a probability indicator of 1).
+
+The below table and plot summarize the comparison. 
+```{r, message = FALSE, warning = FALSE}
+
+#Compare predicted to actual 
+final.mod.aug$predicted <- round(final.mod.aug$.fitted)
+
+knitr::kable(with(final.mod.aug, table(profitable.ind, predicted)), caption = "Confusion Matrix - Actual (row) vs. Predicted (column)")
+
+
+#plot with comparison of prediction
+ggplot(data = final.mod.aug, aes(x = log.revenue., y = profitable.ind)) + 
+  geom_jitter(height = 0.02) +  
+  geom_point(data = final.mod.aug, aes(x = log.revenue., y = .fitted), color = "#00cdcd", alpha = 0.2) +
+  theme_few() + 
+  labs(x = "Log Revenue", y = "Probability of Profitability") +
+  ggtitle("Profitability - Actual vs. Predicted") + 
+  facet_grid(profitable.ind ~ predicted)
+
+
+```
+
+For the `r nrow(movies.pr)` movies in our data set, the model predicted that `r nrow(filter(final.mod.aug, profitable.ind == 1))` would be profitable. Of these, the model accurately predicted `nrow(filter(final.mod.aug, profitable.ind == 1 & predicted ==1))`.  
+
+The model predicted that `r nrow(filter(final.mod.aug, profitable.ind == 0))` movies would not be profitabe, and of those, `r nrow(filter(final.mod.aug, profitable.ind == 0 & predicted == 0))` were accurate. 
+
+In total, the model incorrectly predicted the outcome for `r nrow(filter(final.mod.aug, profitable.ind == 1 & predicted == 0)) +  nrow(filter(final.mod.aug, profitable.ind == 0 & predicted ==1))` movies. 
+
+
+
+

@@ -1,0 +1,16 @@
+base
+ggplot2
+dplyr
+broom
+bindrcpp
+magrittr
+car
+zoo
+lmtest
+sandwich
+survival
+AER
+MASS
+Matrix
+lme4
+arm
